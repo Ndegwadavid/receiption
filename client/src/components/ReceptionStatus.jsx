@@ -1,4 +1,3 @@
-// src/components/ReceptionStatus.jsx
 import { useEffect, useState } from 'react'
 import io from 'socket.io-client'
 
@@ -19,7 +18,7 @@ function ReceptionStatus() {
     fittingInstructions: '',
     orderBookedBy: '',
     deliveryDate: new Date().toISOString().split('T')[0],
-    referenceNumber: `OP${Date.now().toString().slice(-6)}`
+    referenceNumber: ''
   })
 
   useEffect(() => {
@@ -39,15 +38,19 @@ function ReceptionStatus() {
 
   // Calculate total when amount and quantity change
   useEffect(() => {
-    if (salesData.amount && salesData.quantity) {
-      const total = parseFloat(salesData.amount) * parseInt(salesData.quantity)
+    if (salesData.amount) {
+      // Total is same as amount since it's price per item
+      const total = parseFloat(salesData.amount)
+      const advance = parseFloat(salesData.advance) || 0
+      
       setSalesData(prev => ({
         ...prev,
         total: total.toString(),
-        balance: (total - (parseFloat(prev.advance) || 0)).toString()
+        // Balance is total minus advance, minimum 0
+        balance: Math.max(0, total - advance).toString()
       }))
     }
-  }, [salesData.amount, salesData.quantity])
+  }, [salesData.amount, salesData.advance])
 
   const handleSalesSubmit = async (e) => {
     e.preventDefault()
@@ -57,8 +60,8 @@ function ReceptionStatus() {
       salesData: salesData
     })
 
-    // Print receipt
-    await printReceipt()
+    // Print receipt with current data
+    await printReceipt(salesData, selectedExam)
 
     // Reset form
     setSelectedExam(null)
@@ -85,186 +88,86 @@ function ReceptionStatus() {
     }))
   }
 
-  const printReceipt = async () => {
-    const printWindow = window.open('', '_blank')
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Sales Receipt - ${selectedExam.name}</title>
-          <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-          <style>
-            body { padding: 20px; }
-            .receipt-header { text-align: center; margin-bottom: 30px; }
-            .receipt-footer { margin-top: 50px; }
-            .amount-box { border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; }
-            @media print {
-              .no-print { display: none; }
-              button { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="receipt-header">
-              <h2>OptiPlus</h2>
-              <h4>Sales Receipt</h4>
-              <p>Reference: ${salesData.referenceNumber}</p>
-            </div>
-
-            <div class="row mb-4">
-              <div class="col-6">
-                <p><strong>Customer Name:</strong> ${selectedExam.name}</p>
-                <p><strong>Mobile:</strong> ${selectedExam.mobile}</p>
-              </div>
-              <div class="col-6 text-end">
-                <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-                <p><strong>Delivery Date:</strong> ${new Date(salesData.deliveryDate).toLocaleDateString()}</p>
-              </div>
-            </div>
-
-            <table class="table table-bordered mb-4">
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Brand</td>
-                  <td>${salesData.brand}</td>
-                </tr>
-                <tr>
-                  <td>Model</td>
-                  <td>${salesData.model}</td>
-                </tr>
-                <tr>
-                  <td>Color</td>
-                  <td>${salesData.color}</td>
-                </tr>
-                <tr>
-                  <td>Quantity</td>
-                  <td>${salesData.quantity}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div class="amount-box">
-              <div class="row">
-                <div class="col-6"><strong>Amount per unit:</strong></div>
-                <div class="col-6 text-end">KSH ${parseFloat(salesData.amount).toLocaleString()}</div>
-              </div>
-              <div class="row">
-                <div class="col-6"><strong>Total Amount:</strong></div>
-                <div class="col-6 text-end">KSH ${parseFloat(salesData.total).toLocaleString()}</div>
-              </div>
-              <div class="row">
-                <div class="col-6"><strong>Advance Paid:</strong></div>
-                <div class="col-6 text-end">KSH ${parseFloat(salesData.advance).toLocaleString()}</div>
-              </div>
-              <div class="row">
-                <div class="col-6"><strong>Balance:</strong></div>
-                <div class="col-6 text-end">KSH ${parseFloat(salesData.balance).toLocaleString()}</div>
-              </div>
-            </div>
-
-            <div class="mb-4">
-              <strong>Fitting Instructions:</strong>
-              <p>${salesData.fittingInstructions || 'N/A'}</p>
-            </div>
-
-            <div class="receipt-footer">
-              <div class="row">
-                <div class="col-6">
-                  <p><strong>Order Booked By:</strong> ${salesData.orderBookedBy}</p>
-                </div>
-                <div class="col-6 text-end">
-                  <p>Customer Signature: _________________</p>
-                </div>
-              </div>
-            </div>
-
-            <div class="text-center mt-4 mb-4">
-              <p>Thank you for choosing OptiPlus!</p>
-            </div>
-
-            <div class="d-flex justify-content-center mt-4 no-print">
-              <button onclick="window.print()" class="btn btn-primary">Print Receipt</button>
-              <button onclick="window.close()" class="btn btn-secondary ms-2">Close</button>
-            </div>
-          </div>
-        </body>
-      </html>
-    `)
+  const getStatusBadgeColor = (status) => {
+    switch (status) {
+      case 'pending_examination':
+        return 'bg-yellow-100 text-yellow-800'
+      case 'examination_complete':
+        return 'bg-green-100 text-green-800'
+      default:
+        return 'bg-gray-100 text-gray-800'
+    }
   }
 
   return (
-    <div className="container mt-4">
-      <div className="card">
-        <div className="card-header bg-primary text-white">
-          <h5 className="mb-0">Examination Status Board</h5>
-        </div>
-        <div className="card-body p-0">
+    <div className="bg-gray-50 min-h-screen">
+      {/* Status Board */}
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="p-4 bg-indigo-600">
+            <h3 className="text-lg font-medium text-white">Examination Status Board</h3>
+          </div>
+
           {/* Status Counters */}
-          <div className="d-flex justify-content-around p-3 bg-light border-bottom">
+          <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 border-b">
             <div className="text-center">
-              <h6>Pending</h6>
-              <span className="badge bg-warning">
-                {examinations.filter(e => e.status === 'pending_examination').length}
-              </span>
+              <span className="text-sm font-medium text-gray-500">Pending</span>
+              <div className="mt-1">
+                <span className="text-2xl font-semibold text-indigo-600">
+                  {examinations.filter(e => e.status === 'pending_examination').length}
+                </span>
+              </div>
             </div>
             <div className="text-center">
-              <h6>Ready for Sales</h6>
-              <span className="badge bg-success">
-                {examinations.filter(e => e.status === 'examination_complete').length}
-              </span>
+              <span className="text-sm font-medium text-gray-500">Ready for Sales</span>
+              <div className="mt-1">
+                <span className="text-2xl font-semibold text-green-600">
+                  {examinations.filter(e => e.status === 'examination_complete').length}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Examinations List */}
-          <div className="list-group list-group-flush">
-            {examinations.map(exam => (
-              <div 
-                key={exam.id}
-                className="list-group-item"
-              >
-                <div className="d-flex justify-content-between align-items-center">
-                  <div>
-                    <h6 className="mb-1">{exam.name}</h6>
-                    <small className="text-muted">
-                      {new Date(exam.created_at).toLocaleString('en-KE')}
-                    </small>
-                  </div>
-                  <div className="d-flex align-items-center">
-                    <span className={`badge me-2 ${
-                      exam.status === 'pending_examination' 
-                        ? 'bg-warning'
-                        : exam.status === 'examination_complete'
-                          ? 'bg-success'
-                          : 'bg-secondary'
-                    }`}>
-                      {exam.status === 'pending_examination'
-                        ? 'With Doctor'
-                        : exam.status === 'examination_complete'
-                          ? 'Ready for Sales'
-                          : 'Completed'}
-                    </span>
-                    {exam.status === 'examination_complete' && (
-                      <button
-                        className="btn btn-sm btn-primary"
-                        onClick={() => setSelectedExam(exam)}
-                      >
-                        Enter Sales
-                      </button>
-                    )}
+          {/* Patient List */}
+          <div className="divide-y divide-gray-200">
+            {examinations.length === 0 ? (
+              <div className="p-6 text-center text-gray-500">
+                No active patients
+              </div>
+            ) : (
+              examinations.map(exam => (
+                <div 
+                  key={exam.id}
+                  className="p-4 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="text-lg font-medium text-gray-900">{exam.name}</h4>
+                      <p className="mt-1 text-sm text-gray-500">
+                        {new Date(exam.created_at).toLocaleString('en-KE')}
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeColor(exam.status)}`}>
+                        {exam.status === 'pending_examination' 
+                          ? 'With Doctor'
+                          : exam.status === 'examination_complete'
+                            ? 'Ready for Sales'
+                            : 'Processing'
+                        }
+                      </span>
+                      {exam.status === 'examination_complete' && (
+                        <button
+                          onClick={() => setSelectedExam(exam)}
+                          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                        >
+                          Enter Sales
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-            {examinations.length === 0 && (
-              <div className="text-center p-4 text-muted">
-                <p className="mb-0">No active examinations</p>
-              </div>
+              ))
             )}
           </div>
         </div>
@@ -272,186 +175,367 @@ function ReceptionStatus() {
 
       {/* Sales Form Modal */}
       {selectedExam && (
-        <div className="modal fade show" 
-          style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}
-        >
-          <div className="modal-dialog modal-lg">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Sales Entry - {selectedExam.name}</h5>
-                <button 
-                  type="button" 
-                  className="btn-close"
-                  onClick={() => setSelectedExam(null)}
-                />
-              </div>
-              <div className="modal-body">
-                <form onSubmit={handleSalesSubmit}>
-                  <div className="row">
-                    <div className="col-md-6 mb-3">
-                      <label className="form-label">Brand</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="brand"
-                        value={salesData.brand}
-                        onChange={handleSalesChange}
-                        required
-                      />
-                    </div>
+        <div className="fixed inset-0 overflow-y-auto z-50">
+          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div 
+              className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+              onClick={() => setSelectedExam(null)}
+            />
 
-                    <div className="col-md-6 mb-3">
-                      <label className="form-label">Model</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="model"
-                        value={salesData.model}
-                        onChange={handleSalesChange}
-                        required
-                      />
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                      <label className="form-label">Color</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="color"
-                        value={salesData.color}
-                        onChange={handleSalesChange}
-                        required
-                      />
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                      <label className="form-label">Quantity</label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        name="quantity"
-                        value={salesData.quantity}
-                        onChange={handleSalesChange}
-                        min="1"
-                        required
-                      />
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                      <label className="form-label">Amount (KSH)</label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        name="amount"
-                        value={salesData.amount}
-                        onChange={handleSalesChange}
-                        required
-                      />
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                      <label className="form-label">Total (KSH)</label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        name="total"
-                        value={salesData.total}
-                        readOnly
-                      />
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                      <label className="form-label">Advance (KSH)</label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        name="advance"
-                        value={salesData.advance}
-                        onChange={handleSalesChange}
-                        required
-                      />
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                      <label className="form-label">Balance (KSH)</label>
-                      <input
-                        type="number"
-                        className="form-control"
-                        name="balance"
-                        value={salesData.balance}
-                        readOnly
-                      />
-                    </div>
-
-                    <div className="col-12 mb-3">
-                      <label className="form-label">Fitting Instructions</label>
-                      <textarea
-                        className="form-control"
-                        name="fittingInstructions"
-                        value={salesData.fittingInstructions}
-                        onChange={handleSalesChange}
-                        rows="2"
-                      />
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                      <label className="form-label">Order Booked By</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="orderBookedBy"
-                        value={salesData.orderBookedBy}
-                        onChange={handleSalesChange}
-                        required
-                      />
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                      <label className="form-label">Delivery Date</label>
-                      <input
-                        type="date"
-                        className="form-control"
-                        name="deliveryDate"
-                        value={salesData.deliveryDate}
-                        onChange={handleSalesChange}
-                        required
-                      />
-                    </div>
-
-                    <div className="col-md-4 mb-3">
-                      <label className="form-label">Reference Number</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="referenceNumber"
-                        value={salesData.referenceNumber}
-                        onChange={handleSalesChange}
-                        required
-                        placeholder='Enter reference Number'
-                      />
-                    </div>
+            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+              <form onSubmit={handleSalesSubmit}>
+                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                  <div className="mb-6">
+                    <h3 className="text-lg font-medium leading-6 text-gray-900">
+                      Sales Entry - {selectedExam.name}
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Enter sales information for the patient
+                    </p>
                   </div>
 
-                  <div className="d-flex justify-content-end gap-2">
-                    <button 
-                      type="button" 
-                      className="btn btn-secondary"
-                      onClick={() => setSelectedExam(null)}
-                    >
-                      Cancel
-                    </button>
-                    <button type="submit" className="btn btn-primary">
-                      Complete & Print Receipt
-                    </button>
+                  <div className="grid grid-cols-2 gap-6">
+                    {/* Product Details */}
+                    <div className="col-span-2">
+                      <h4 className="text-sm font-medium text-gray-500 mb-4">Product Details</h4>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Brand
+                          </label>
+                          <input
+                            type="text"
+                            name="brand"
+                            value={salesData.brand}
+                            onChange={handleSalesChange}
+                            required
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Model
+                          </label>
+                          <input
+                            type="text"
+                            name="model"
+                            value={salesData.model}
+                            onChange={handleSalesChange}
+                            required
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Color
+                          </label>
+                          <input
+                            type="text"
+                            name="color"
+                            value={salesData.color}
+                            onChange={handleSalesChange}
+                            required
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Price Details */}
+                    <div className="col-span-2">
+                      <h4 className="text-sm font-medium text-gray-500 mb-4">Price Details</h4>
+                      <div className="grid grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Quantity
+                          </label>
+                          <input
+                            type="number"
+                            name="quantity"
+                            value={salesData.quantity}
+                            onChange={handleSalesChange}
+                            min="1"
+                            required
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Amount (KSH)
+                          </label>
+                          <input
+                            type="number"
+                            name="amount"
+                            value={salesData.amount}
+                            onChange={handleSalesChange}
+                            required
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Total (KSH)
+                          </label>
+                          <input
+                            type="text"
+                            name="total"
+                            value={salesData.total}
+                            readOnly
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 bg-gray-100 text-gray-600"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Balance (KSH)
+                          </label>
+                          <input
+                            type="text"
+                            name="balance"
+                            value={salesData.balance}
+                            readOnly
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 bg-gray-100 text-gray-600"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Advance (KSH)
+                          </label>
+                          <input
+                            type="number"
+                            name="advance"
+                            value={salesData.advance}
+                            onChange={handleSalesChange}
+                            required
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Additional Details */}
+                    <div className="col-span-2">
+                      <h4 className="text-sm font-medium text-gray-500 mb-4">Additional Details</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Fitting Instructions
+                          </label>
+                          <textarea
+                            name="fittingInstructions"
+                            value={salesData.fittingInstructions}
+                            onChange={handleSalesChange}
+                            rows="3"
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Order Booked By
+                          </label>
+                          <input
+                            type="text"
+                            name="orderBookedBy"
+                            value={salesData.orderBookedBy}
+                            onChange={handleSalesChange}
+                            required
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Reference Number
+                          </label>
+                          <input
+                            type="text"
+                            name="referenceNumber"
+                            value={salesData.referenceNumber}
+                            onChange={handleSalesChange}
+                            required
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Delivery Date
+                          </label>
+                          <input
+                            type="date"
+                            name="deliveryDate"
+                            value={salesData.deliveryDate}
+                            onChange={handleSalesChange}
+                            required
+                            className="block w-full px-4 py-3 text-lg rounded-lg border-gray-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 hover:bg-white transition-colors"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </form>
-              </div>
+                </div>
+
+                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                  <button
+                    type="submit"
+                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-6 py-3 bg-indigo-600 text-base font-medium text-white hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm transition-colors"
+                  >
+                    Complete & Print
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-6 py-3 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm transition-colors"
+                    onClick={() => setSelectedExam(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>
       )}
     </div>
-  )
+  );
+}
+
+function printReceipt(salesData, selectedExam) {
+  const printWindow = window.open('', '_blank')
+  
+  if (!printWindow) {
+    alert('Please allow pop-ups to print the receipt')
+    return
+  }
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>Sales Receipt</title>
+        <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+        <style>
+          @media print {
+            body { padding: 2rem; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body class="bg-white p-8">
+        <div class="max-w-3xl mx-auto">
+          <!-- Header -->
+          <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold">OptiPlus</h1>
+            <h2 class="text-xl mt-1">Sales Receipt</h2>
+          </div>
+
+          <!-- Customer Info -->
+          <div class="mb-6">
+            <div class="flex justify-between mb-4">
+              <div>
+                <p class="text-gray-600">Reference Number:</p>
+                <p class="font-bold">${salesData.referenceNumber}</p>
+              </div>
+              <div>
+                <p class="text-gray-600">Date:</p>
+                <p class="font-bold">${new Date().toLocaleDateString()}</p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-gray-600">Customer Name:</p>
+                <p class="font-bold">${selectedExam.name}</p>
+              </div>
+              <div>
+                <p class="text-gray-600">Mobile:</p>
+                <p class="font-bold">${selectedExam.mobile || 'N/A'}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Product Details -->
+          <div class="mb-6">
+            <table class="w-full mb-4">
+              <tr>
+                <td class="font-bold">Brand:</td>
+                <td>${salesData.brand}</td>
+                <td class="font-bold">Model:</td>
+                <td>${salesData.model}</td>
+              </tr>
+              <tr>
+                <td class="font-bold">Color:</td>
+                <td>${salesData.color}</td>
+                <td class="font-bold">Quantity:</td>
+                <td>${salesData.quantity}</td>
+              </tr>
+            </table>
+
+            <!-- Financial Details -->
+            <table class="w-full border-t border-gray-200">
+              <tr>
+                <td class="py-2 font-bold">Amount:</td>
+                <td class="text-right">KSH ${parseFloat(salesData.amount).toLocaleString()}</td>
+              </tr>
+              <tr>
+                <td class="py-2 font-bold">Total:</td>
+                <td class="text-right">KSH ${parseFloat(salesData.total).toLocaleString()}</td>
+              </tr>
+              <tr>
+                <td class="py-2 font-bold">Advance Paid:</td>
+                <td class="text-right">KSH ${parseFloat(salesData.advance || 0).toLocaleString()}</td>
+              </tr>
+              <tr class="border-t border-gray-200">
+                <td class="py-2 font-bold">Balance:</td>
+                <td class="text-right font-bold">KSH ${parseFloat(salesData.balance || 0).toLocaleString()}</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Additional Details -->
+          <div class="mb-6">
+            <p class="font-bold mb-2">Fitting Instructions:</p>
+            <p class="mb-4">${salesData.fittingInstructions || 'N/A'}</p>
+            
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-gray-600">Order Booked By:</p>
+                <p class="font-bold">${salesData.orderBookedBy}</p>
+              </div>
+              <div>
+                <p class="text-gray-600">Delivery Date:</p>
+                <p class="font-bold">${new Date(salesData.deliveryDate).toLocaleDateString()}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="text-center mt-8">
+            <p class="text-gray-600">Thank you for choosing OptiPlus!</p>
+          </div>
+
+          <!-- Print Button -->
+          <div class="mt-8 text-center no-print">
+            <button onclick="window.print()" class="px-6 py-2 bg-blue-600 text-white rounded">
+              Print Receipt
+            </button>
+          </div>
+        </div>
+
+        <script>
+          // Automatically trigger print when the page loads
+          window.onload = function() {
+            window.print();
+          }
+        </script>
+      </body>
+    </html>
+  `)
+  
+  printWindow.document.close()
 }
 
 export default ReceptionStatus
